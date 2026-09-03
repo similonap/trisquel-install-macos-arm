@@ -1,0 +1,172 @@
+name: Build patched netinst ISO
+
+# Downloads the upstream Trisquel netinst ISO, applies the debootstrap SHA256
+# workaround (see tools/patch-trisquel-iso.py) and publishes the result as a
+# release asset so it can be downloaded straight from GitHub.
+
+on:
+  workflow_dispatch:
+    inputs:
+      iso_url:
+        description: ISO to download and patch
+        default: https://cdimage.trisquel.info/trisquel-images/trisquel-netinst_12.0_arm64.iso
+        required: false
+      force:
+        description: Rebuild even when the upstream ISO has not changed
+        type: boolean
+        default: false
+  schedule:
+    # Weekly, so a rebuilt upstream image gets picked up on its own.
+    - cron: '17 4 * * 1'
+  push:
+    branches: [main]
+    paths:
+      - tools/patch-trisquel-iso.py
+      - .github/workflows/patch-iso.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: patch-iso
+  cancel-in-progress: false
+
+env:
+  ISO_URL: ${{ inputs.iso_url || 'https://cdimage.trisquel.info/trisquel-images/trisquel-netinst_12.0_arm64.iso' }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xorriso
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xorriso
+
+      - name: Look at the upstream image
+        id: upstream
+        run: |
+          set -euo pipefail
+          name="$(basename "$ISO_URL")"
+          stem="${name%.iso}"
+          tag="patched-$stem"
+
+          # Upstream publishes a .sha256 next to every image.
+          curl -fsSL --retry 5 --retry-delay 5 -o upstream.sha256 "$ISO_URL.sha256"
+          sha="$(cut -d' ' -f1 upstream.sha256)"
+
+          # What did we build last time?
+          built=""
+          if gh release download "$tag" -p source.sha256 -D previous --clobber 2>/dev/null; then
+            built="$(cut -d' ' -f1 previous/source.sha256)"
+          fi
+
+          {
+            echo "name=$name"
+            echo "stem=$stem"
+            echo "tag=$tag"
+            echo "sha256=$sha"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "$built" = "$sha" ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release $tag already holds the patched build of $sha; nothing to do."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the ISO
+        if: steps.upstream.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --retry-delay 5 -o "${{ steps.upstream.outputs.name }}" "$ISO_URL"
+          sha256sum -c upstream.sha256
+
+      - name: Patch it
+        if: steps.upstream.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          python3 tools/patch-trisquel-iso.py \
+            "${{ steps.upstream.outputs.name }}" \
+            -o "${{ steps.upstream.outputs.stem }}-sha256.iso"
+          python3 tools/patch-trisquel-iso.py --check "${{ steps.upstream.outputs.stem }}-sha256.iso"
+
+      - name: Write checksums
+        if: steps.upstream.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          sha256sum "${{ steps.upstream.outputs.stem }}-sha256.iso" > SHA256SUMS
+          cp upstream.sha256 source.sha256
+          cat SHA256SUMS
+
+      - name: Publish the release
+        if: steps.upstream.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          tag='${{ steps.upstream.outputs.tag }}'
+          iso="${{ steps.upstream.outputs.stem }}-sha256.iso"
+
+          cat > notes.md <<EOF
+          Upstream [\`${{ steps.upstream.outputs.name }}\`]($ISO_URL), pre-patched so the
+          installer can get past *Installing the base system*.
+
+          ### What is patched
+
+          A few packages in the Trisquel archive (\`bash\` among them) carry no \`SHA512\`
+          field in the \`Packages\` file. \`pkgdetails\` then hands \`debootstrap\` the
+          \`SHA512\` of the *previous* stanza and the download fails with a checksum
+          mismatch. Every package does have a \`SHA256\`, so \`debootstrap\` is pinned to
+          \`SHA256\`.
+
+          \`/usr/share/debootstrap/functions\` is not on the ISO -- it arrives with the
+          \`debootstrap-udeb\` that \`anna\` fetches during the install -- so the initrd
+          gets one extra startup script,
+          \`/usr/lib/debian-installer-startup.d/S99debootstrap-sha256\`, which waits for
+          that file and rewrites \`SHA_SIZE=512\` to \`SHA_SIZE=256\`. Nothing else in the
+          image is touched: every other file is byte for byte the upstream one and the
+          El Torito / MBR boot layout is reproduced unchanged.
+
+          During the install, tty4 (ctrl-alt-f4) shows
+          \`debootstrap-sha256: patched /usr/share/debootstrap/functions ...\` once the
+          udeb has been fetched.
+
+          ### Checksums
+
+          | file | sha256 |
+          | --- | --- |
+          | \`$iso\` | \`$(cut -d' ' -f1 SHA256SUMS)\` |
+          | \`${{ steps.upstream.outputs.name }}\` (upstream) | \`${{ steps.upstream.outputs.sha256 }}\` |
+
+          Built by [\`.github/workflows/patch-iso.yml\`](https://github.com/${{ github.repository }}/blob/main/.github/workflows/patch-iso.yml)
+          from ${{ github.sha }} on $(date -u '+%Y-%m-%d').
+          EOF
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" \
+              --title "${{ steps.upstream.outputs.stem }} (debootstrap SHA256 fix)" \
+              --notes-file notes.md
+          else
+            gh release create "$tag" \
+              --title "${{ steps.upstream.outputs.stem }} (debootstrap SHA256 fix)" \
+              --notes-file notes.md
+          fi
+          gh release upload "$tag" "$iso" SHA256SUMS source.sha256 --clobber
+
+          {
+            echo "### Published"
+            echo
+            echo "<https://github.com/${{ github.repository }}/releases/tag/$tag>"
+            echo
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Nothing to do
+        if: steps.upstream.outputs.skip == 'true'
+        run: |
+          echo "Upstream ISO (${{ steps.upstream.outputs.sha256 }}) is unchanged since the last build." \
+            >> "$GITHUB_STEP_SUMMARY"
