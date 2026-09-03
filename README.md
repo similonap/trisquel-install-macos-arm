@@ -233,6 +233,9 @@ Om deze stuurprogramma's te kunnen compileren heb je ontwikkeltools en actuele k
 Voer de volgende instructie uit:
 
 ```
+sudo apt update
+sudo apt upgrade
+sudo apt install gcc make tree # Optional
 sudo apt install build-essential dkms linux-headers-$(uname -r)
 ```
 
