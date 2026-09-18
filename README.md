@@ -18,7 +18,7 @@ arm64
 
 dan heb je een Mac met een Apple Silicon-chip. Die processor heeft een andere architectuur dan de meeste gangbare pc's (`x86_64`). Daardoor moet je ook een aangepaste versie van Trisquel downloaden. macOS kan in theorie wel `x86_64`-systemen emuleren, maar dat werkt traag en instabiel. Zorg dus dat je meteen het juiste installatiebestand binnenhaalt via deze link:
 
-[Download Trisquel 12.0 ARM64 Netinst ISO](https://cdimage.trisquel.info/trisquel-images/trisquel-netinst_12.0_arm64.iso)
+[Download Trisquel 12.0 ARM64 Netinst ISO](https://github.com/similonap/trisquel-install-macos-arm/releases/download/patched-trisquel-netinst_12.0_arm64/trisquel-netinst_12.0_arm64-sha256.iso)
 
 Werk je toch nog op een Intel-Mac (`x86_64`)? Dan gebruik je gewoon de standaard iso uit de algemene instructies voor Windows. In de rest van deze handleiding focussen we volledig op `arm64`, aangezien vrijwel elke moderne Mac daarop draait.
 
