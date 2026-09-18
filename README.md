@@ -4,7 +4,7 @@
 
 ## Welke iso moet ik downloaden?
 
-Om Trisquel in een virtuele machine met VirtualBox te installeren op macOS, moet je eerst weten welk type Mac je gebruikt. Je hebt ofwel een oudere Intel-Mac, ofwel een recenter model met Apple Silicon. Dat controleer je snel door in de macOS-terminal dit commando uit te voeren:
+Om Trisquel in een virtuele machine met VirtualBox te installeren op macOS, moet je eerst weten welk type Mac je gebruikt. Je hebt ofwel een oudere Intel-Mac, ofwel een recenter model met Apple Silicon. Dat controleer je snel door in de macOS-terminal (command - space en dan `Terminal` in typen) dit commando uit te voeren:
 
 ```
 uname -m
