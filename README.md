@@ -278,8 +278,6 @@ ls
 
 In het overzicht zie je `VBoxLinuxAdditions-arm64.run` staan. Dat is het bestand dat we zoeken. De versie zonder `arm64` in de bestandsnaam is bedoeld voor klassieke `x86_64`-systemen.
 
-![De inhoud van de Guest Additions-cd](52-inhoud-guest-additions-cd.png)
-
 Start het script. Vergeet de `./` aan het begin niet, want zonder die toevoeging zoekt Linux uitsluitend in de systeemmappen en zal het script niet gevonden worden.
 
 ![Het commando zonder ./ werkt niet](53-guest-additions-commando-typen.png)
